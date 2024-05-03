@@ -28,10 +28,9 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
-#include <dht.h>
-
 //libraries for BME68x support
 #include "driver/i2c.h"
+//#include "driver/i2c_master.h"
 #include "bsec_integration.h"
 #include <nvs_flash.h>
 #include <nvs.h>
@@ -40,7 +39,11 @@
 
 // Library for HD44780 Screen Support
 #include <hd44780.h>
-#include <sys/time.h>
+//#include <sys/time.h>
+
+// libraries for time keeping
+#include "esp_netif_sntp.h"
+#include "esp_sntp.h"
 
 #define I2C_MASTER_TX_BUF_DISABLE 0 /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_RX_BUF_DISABLE 0 /*!< I2C master doesn't need buffer */
@@ -55,9 +58,6 @@
 
 static const char* sensor_binary = "sensor_blob";
 
-
-static const dht_sensor_type_t sensor_type = DHT_TYPE_AM2301;
-
 static bool example_adc_calibration_init(adc_unit_t unit, adc_atten_t atten, adc_cali_handle_t *out_handle);
 static void example_adc_calibration_deinit(adc_cali_handle_t handle);
 
@@ -71,7 +71,7 @@ static const adc_bitwidth_t width = ADC_BITWIDTH_12;
 // 13bit ADC will cause issues with battery voltage formula
 static const adc_bitwidth_t width = ADC_BITWIDTH_12;
 #endif
-static const adc_atten_t atten = ADC_ATTEN_DB_11;
+static const adc_atten_t atten = ADC_ATTEN_DB_12;
 
 
 static int adc_raw_battery;
@@ -212,6 +212,7 @@ static void bme680_sleep(uint32_t t_us, void *intf_ptr)
 static float BME68xtemperature = 0.0;
 static float BME68xhumidity = 0.0;
 static float BME68xsIAQ = 0.0;
+static float BME68xdIAQ = 0.0;
 static float BME68xC02 = 0.0;
 static float BME68xbVOC = 0.0;
 
@@ -231,6 +232,11 @@ static hd44780_t lcd = {
     }
 };
 
+time_t now;
+char strftime_buf[64];
+struct tm timeinfo;
+char line1[17];
+char line2[17];
 
 void output_ready(int64_t timestamp, float iaq, uint8_t iaq_accuracy, float siaq, uint8_t siaq_accuracy, float compensateTemperature, float compensateHumidity,
      float raw_pressure, float raw_temp, float raw_humidity, float raw_gas, float co2, float bVOC, bsec_library_return_t bsec_status) {
@@ -241,6 +247,7 @@ void output_ready(int64_t timestamp, float iaq, uint8_t iaq_accuracy, float siaq
     BME68xtemperature = compensateTemperature;
     BME68xhumidity = compensateHumidity;
     BME68xsIAQ = siaq;
+    BME68xdIAQ = iaq;
     BME68xC02 = co2;
     BME68xbVOC = bVOC;
     
@@ -254,20 +261,36 @@ void output_ready(int64_t timestamp, float iaq, uint8_t iaq_accuracy, float siaq
         ESP_LOGI(TAG, "ADC%d Channel[%d] Cali LDR Voltage: %d mV", ADC_UNIT_1 + 1, LDR_ADC_CHANNEL, adc_cali_LDR);
     }
 
+    time(&now);
+    // Set timezone to PST
+    localtime_r(&now, &timeinfo);
+    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+    ESP_LOGI(TAG, "time in reno: %s", strftime_buf);
     // Print out results to HD44780 Screen
-
-    char line1[17];
-    char line2[17];
-    struct timeval tv;
-    gettimeofday(&tv, NULL);
-    snprintf(line1, 17, "T: %.2lfF C: %d", ((BME68xtemperature * 9 / 5) + 32), (int)(tv.tv_sec/3600));
+    if(timeinfo.tm_hour > 12) {
+        snprintf(line1, (volatile size_t){sizeof(line1)}, "%.2lfF   %d:%02d PM", ((BME68xtemperature * 9 / 5) + 32), timeinfo.tm_hour - 12, timeinfo.tm_min);
+    } else if (timeinfo.tm_hour == 12)
+        snprintf(line1, (volatile size_t){sizeof(line1)}, "%.2lfF   %d:%02d PM", ((BME68xtemperature * 9 / 5) + 32), timeinfo.tm_hour, timeinfo.tm_min);
+    else {
+        snprintf(line1, (volatile size_t){sizeof(line1)}, "%.2lfF   %d:%d AM", ((BME68xtemperature * 9 / 5) + 32), timeinfo.tm_hour, timeinfo.tm_min);
+    }
     hd44780_gotoxy(&lcd, 0, 0);
     hd44780_puts(&lcd, line1);
+
     hd44780_gotoxy(&lcd, 0, 1);
-    snprintf(line2, 17, "H: %d%% sAQI: %d  ", (int)round(BME68xhumidity), (int)round(BME68xsIAQ));
+        snprintf(line2, (volatile size_t){sizeof(line2)}, "%d%% %dAQI %02d-%02d", (int)round(BME68xhumidity), (int)round(BME68xdIAQ), timeinfo.tm_mon + 1, timeinfo.tm_mday);
     hd44780_puts(&lcd, line2);
 
 }
+
+
+/* 
+ * In an actual accessory, this should read from hardware.
+ * Read routines are generally not required as the value is available with th HAP core
+ * when it is updated from write routines. For external triggers (like fan switched on/off
+ * using physical button), accessories should explicitly call hap_char_update_val()
+ * instead of waiting for a read request.
+ */
 
 float bm68xtempReturn(hap_char_t *hc, hap_status_t *status_code, void *serv_priv, void *read_priv) {
     if (hap_req_get_ctrl_id(read_priv)) {
@@ -614,73 +637,8 @@ static void temp_hap_event_handler(void* arg, esp_event_base_t event_base, int32
     }
 }
 
-/* 
- * In an actual accessory, this should read from hardware.
- * Read routines are generally not required as the value is available with th HAP core
- * when it is updated from write routines. For external triggers (like fan switched on/off
- * using physical button), accessories should explicitly call hap_char_update_val()
- * instead of waiting for a read request.
- */
-static int temp_read(hap_char_t *hc, hap_status_t *status_code, void *serv_priv, void *read_priv)
-{
-    static float temperature = 0.0;
-    static float humidity = 0.0;
 
-    if (hap_req_get_ctrl_id(read_priv)) {
-        ESP_LOGI(TAG, "temp sensor received read from %s", hap_req_get_ctrl_id(read_priv));
-    }
 
-    // Only update the sensor info on a temperature read since they are read one after another
-    if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_CURRENT_TEMPERATURE)) 
-    {
-        hap_val_t new_val;
-
-        if (dht_read_float_data(sensor_type, CONFIG_GPIO_OUTPUT_IO_DHT22, &humidity, &temperature) == ESP_OK)
-            ESP_LOGI(TAG, "Read Temp: %0.01fC Humidity: %0.01f%% ", temperature, humidity);
-        else
-            ESP_LOGE(TAG, "Could not read data from DHT sensor on GPIO %d", CONFIG_GPIO_OUTPUT_IO_DHT22);
-
-        new_val.f = temperature;
-        hap_char_update_val(hc, &new_val);
-        *status_code = HAP_STATUS_SUCCESS;
-        ESP_LOGI(TAG,"temp status updated to %0.01f", new_val.f);
-    }
-    if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_CURRENT_RELATIVE_HUMIDITY)) 
-    {
-        hap_val_t new_val;
-        new_val.f = humidity;
-        hap_char_update_val(hc, &new_val);
-        *status_code = HAP_STATUS_SUCCESS;
-        ESP_LOGI(TAG,"humidity status updated to %0.01f%%", new_val.f);
-    }
-    if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_BATTERY_LEVEL)) 
-    {
-        hap_val_t new_val;
-        new_val.i = get_battery_level();
-        hap_char_update_val(hc, &new_val);
-        *status_code = HAP_STATUS_SUCCESS;
-        ESP_LOGI(TAG, "battery level updated to %d", new_val.i);
-    }
-    if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_STATUS_LOW_BATTERY)) 
-    {
-        hap_val_t new_val;
-        uint8_t battery_level = get_battery_level();
-        new_val.i = battery_level<25?1:0;
-        hap_char_update_val(hc, &new_val);
-        *status_code = HAP_STATUS_SUCCESS;
-        ESP_LOGI(TAG, "battery low level updated to %d (%s)", new_val.i, new_val.i?"low battery":"battery ok");
-    }
-    if (!strcmp(hap_char_get_type_uuid(hc), HAP_CHAR_UUID_CHARGING_STATE)) 
-    {
-        hap_val_t new_val;
-        // Figure out if we are charging, and update this info.
-        new_val.i = 0;
-        hap_char_update_val(hc, &new_val);
-        *status_code = HAP_STATUS_SUCCESS;
-        ESP_LOGI(TAG, "battery charging state updated");
-    }
-    return HAP_SUCCESS;
-}
 
 /**
  * @brief Main Thread to handle setting up the service and accessories for the GarageDoor
@@ -764,15 +722,9 @@ static void temp_thread_entry(void *p)
     /* Add a dummy Product Data */
     uint8_t product_data[] = {'E','S','P','3','2','H','A','P'};
     hap_acc_add_product_data(tempaccessory, product_data, sizeof(product_data));
-    if (SENSOR_IN_USE == 1) {
-        temperature = BME68xtemperature;
-        humidity = BME68xhumidity;
-    } else if (SENSOR_IN_USE == 2) {
-        if (dht_read_float_data(sensor_type, CONFIG_GPIO_OUTPUT_IO_DHT22, &humidity, &temperature) == ESP_OK)
-            ESP_LOGI(TAG, "Sensor Read: Temperature: %0.01f Humidity: %0.01f", temperature, humidity);
-        else
-            ESP_LOGE(TAG, "Could not read data from sensor on GPIO %d\n", CONFIG_GPIO_OUTPUT_IO_DHT22);
-    }
+    temperature = BME68xtemperature;
+    humidity = BME68xhumidity;
+
 
     
     ESP_LOGI(TAG, "Creating temperature service (current temp: %0.01fC)", temperature);
@@ -780,11 +732,8 @@ static void temp_thread_entry(void *p)
     tempservice = hap_serv_temperature_sensor_create(temperature);
     hap_serv_add_char(tempservice, hap_char_name_create("ESP Temperature Sensor"));
     /* Set the read callback for the service (optional) */
-    if (SENSOR_IN_USE == 1) {
-        hap_serv_set_read_cb(tempservice, bm68xtempReturn);
-    } else if (SENSOR_IN_USE == 2) {
-        hap_serv_set_read_cb(tempservice, temp_read);
-    }
+    hap_serv_set_read_cb(tempservice, bm68xtempReturn);
+
     /* Add the temp Service to the Accessory Object */
     hap_acc_add_serv(tempaccessory, tempservice);
 
@@ -794,29 +743,25 @@ static void temp_thread_entry(void *p)
     humidityservice = hap_serv_humidity_sensor_create(humidity);
     hap_serv_add_char(humidityservice, hap_char_name_create("ESP Humidity Sensor"));
     /* Set the read callback for the service (optional) */
-    if (SENSOR_IN_USE == 1) {
-        hap_serv_set_read_cb(humidityservice, bm68xhumidReturn);
-    } else if (SENSOR_IN_USE == 2) {
-        hap_serv_set_read_cb(humidityservice, temp_read);
-    }
+    hap_serv_set_read_cb(humidityservice, bm68xhumidReturn);
+
     /* Add the humidity Service to the Accessory Object */
     hap_acc_add_serv(tempaccessory, humidityservice);
 
     // DHT line of sensors do not support AQI 
-    if (SENSOR_IN_USE == 1) {
-        ESP_LOGI(TAG, "Creating AQI service (current humidity: %d)", aqiReading);
-        /* Create the aqi Service. Include the "name" since this is a user visible service  */
-        aqiService = hap_serv_air_quality_sensor_create(aqiReading);
-        VOCService = hap_char_voc_density_create(vocReading);
-        co2Service = hap_char_carbon_dioxide_level_create(co2Reading);
-        hap_serv_add_char(aqiService, hap_char_name_create("ESP AQI Sensor"));
-        hap_serv_add_char(aqiService, co2Service);
-        hap_serv_add_char(aqiService, VOCService);
-        /* Set the read callback for the service (optional) */
-        hap_serv_set_read_cb(aqiService, bm68xIAQReturn);
-        /* Add the AQI Service to the Accessory Object */
-        hap_acc_add_serv(tempaccessory, aqiService);
-    }   
+    ESP_LOGI(TAG, "Creating AQI service (current humidity: %d)", aqiReading);
+    /* Create the aqi Service. Include the "name" since this is a user visible service  */
+    aqiService = hap_serv_air_quality_sensor_create(aqiReading);
+    VOCService = hap_char_voc_density_create(vocReading);
+    co2Service = hap_char_carbon_dioxide_level_create(co2Reading);
+    hap_serv_add_char(aqiService, hap_char_name_create("ESP AQI Sensor"));
+    hap_serv_add_char(aqiService, co2Service);
+    hap_serv_add_char(aqiService, VOCService);
+    /* Set the read callback for the service (optional) */
+    hap_serv_set_read_cb(aqiService, bm68xIAQReturn);
+    /* Add the AQI Service to the Accessory Object */
+    hap_acc_add_serv(tempaccessory, aqiService);
+
 
     if (LDR_ADC_CHANNEL != 99) {
         ESP_LOGI(TAG, "Creating Lux service (current mV of LDR: %f)", luxVoltReading);
@@ -835,7 +780,6 @@ static void temp_thread_entry(void *p)
     // Create the CloseIf switch
     battery_service = hap_serv_battery_service_create(battery_level, 0, (battery_level<25)?1:0);
     hap_serv_add_char(battery_service, hap_char_name_create("ESP Battery Level"));
-    hap_serv_set_read_cb(battery_service, temp_read);
     hap_acc_add_serv(tempaccessory, battery_service);
 
 
@@ -997,6 +941,12 @@ void app_main()
     esp_log_level_set("TRANSPORT_SSL", ESP_LOG_VERBOSE);
     esp_log_level_set("TRANSPORT", ESP_LOG_VERBOSE);
     esp_log_level_set("OUTBOX", ESP_LOG_VERBOSE);
+
+    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+    esp_netif_sntp_init(&config);
+
+    setenv("TZ", "PST8PDT", 1);
+    tzset();
 
     ESP_LOGI(TAG, "[APP] Creating main thread...");
 

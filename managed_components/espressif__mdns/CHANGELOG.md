@@ -1,5 +1,108 @@
 # Changelog
 
+## [1.3.0](https://github.com/espressif/esp-protocols/commits/mdns-v1.3.0)
+
+### Features
+
+- add a new mdns query mode `browse` ([af330b6](https://github.com/espressif/esp-protocols/commit/af330b6))
+- Make including mdns_console KConfigurable ([27adbfe](https://github.com/espressif/esp-protocols/commit/27adbfe))
+
+### Bug Fixes
+
+- Schedule all queued Tx packets from timer task ([d4e693e](https://github.com/espressif/esp-protocols/commit/d4e693e))
+- add lock for some common apis ([21c84bf](https://github.com/espressif/esp-protocols/commit/21c84bf))
+- fix mdns answer append while host is invalid ([7be16bc](https://github.com/espressif/esp-protocols/commit/7be16bc))
+
+## [1.2.5](https://github.com/espressif/esp-protocols/commits/mdns-v1.2.5)
+
+### Bug Fixes
+
+- Fixed build issues for targets without WiFi caps ([302b46f](https://github.com/espressif/esp-protocols/commit/302b46f))
+
+## [1.2.4](https://github.com/espressif/esp-protocols/commits/mdns-v1.2.4)
+
+### Bug Fixes
+
+- Correction on 6d2c475 MDNS_PREDEF_NETIF_ETH fix ([fc59f87c4e](https://github.com/espressif/esp-protocols/commit/fc59f87c4e))
+- fix the logic of creating pcb for networking socket ([5000a9a20a](https://github.com/espressif/esp-protocols/commit/5000a9a20a))
+- fix compiling issue when disabling IPv4 ([2646dcd23a](https://github.com/espressif/esp-protocols/commit/2646dcd23a))
+- Fix compile error when MDNS_PREDEF_NETIF_ETH is defined, but ETH_ENABLED is not (#459) ([6d2c475c20](https://github.com/espressif/esp-protocols/commit/6d2c475c20))
+
+## [1.2.3](https://github.com/espressif/esp-protocols/commits/mdns-v1.2.3)
+
+### Bug Fixes
+
+- fixed CI issues for host and afl tests ([4be5efc84e](https://github.com/espressif/esp-protocols/commit/4be5efc84e))
+- fix copy delegated host addr ([19fb36000c](https://github.com/espressif/esp-protocols/commit/19fb36000c))
+- enable CONFIG_ESP_WIFI_ENABLED if CONFIG_SOC_WIFI_SUPPORTED is also enabled (for ESP-IDF <= 5.1) ([d20a718320](https://github.com/espressif/esp-protocols/commit/d20a718320))
+- remove protocol_examples_common ([1ee9dae6bf](https://github.com/espressif/esp-protocols/commit/1ee9dae6bf))
+- move the example into a subdirectory ([d28232b9f8](https://github.com/espressif/esp-protocols/commit/d28232b9f8))
+- reference protocol_examples_common from IDF ([c83b76ea8f](https://github.com/espressif/esp-protocols/commit/c83b76ea8f))
+
+## [1.2.2](https://github.com/espressif/esp-protocols/commits/mdns-v1.2.2)
+
+### Bug Fixes
+
+- add terminator for the getting host name ([b6a4d94](https://github.com/espressif/esp-protocols/commit/b6a4d94))
+- Enable ESP_WIFI_CONFIG when ESP-IDF <= 5.1 ([0b783c0](https://github.com/espressif/esp-protocols/commit/0b783c0))
+- set host list NULL on destroy ([ea54eef](https://github.com/espressif/esp-protocols/commit/ea54eef))
+- removed Wno-format flag and fixed formatting warnings ([c48e442](https://github.com/espressif/esp-protocols/commit/c48e442))
+- remove the the range of MDNS_MAX_SERVICES and fix issues of string functions ([3dadce2](https://github.com/espressif/esp-protocols/commit/3dadce2))
+
+## [1.2.1](https://github.com/espressif/esp-protocols/commits/mdns-v1.2.1)
+
+### Features
+
+- Allow setting length of mDNS action queue in menuconfig ([28cd898](https://github.com/espressif/esp-protocols/commit/28cd898))
+
+### Bug Fixes
+
+- fix build issue if CONFIG_ESP_WIFI_ENABLED disabled ([24f7031](https://github.com/espressif/esp-protocols/commit/24f7031))
+- added idf_component.yml for examples ([d273e10](https://github.com/espressif/esp-protocols/commit/d273e10))
+- added guard check for null pointer ([71bb461](https://github.com/espressif/esp-protocols/commit/71bb461))
+
+## [1.2.0](https://github.com/espressif/esp-protocols/commits/mdns-v1.2.0)
+
+### Features
+
+- add an API for setting address to a delegated host ([ddc3eb6](https://github.com/espressif/esp-protocols/commit/ddc3eb6))
+- Add support for lwip build under linux ([588465d](https://github.com/espressif/esp-protocols/commit/588465d))
+- Allow for adding a delegated host with no address ([c562461](https://github.com/espressif/esp-protocols/commit/c562461))
+- Add APIs for looking up self hosted services and getting the self hostname ([f0df12d](https://github.com/espressif/esp-protocols/commit/f0df12d))
+
+### Bug Fixes
+
+- Refactor freertos linux compat layers ([79a0e57](https://github.com/espressif/esp-protocols/commit/79a0e57))
+- Fix delegated service PTR response ([cab0e1d](https://github.com/espressif/esp-protocols/commit/cab0e1d))
+- Added unit tests to CI + minor fix to pass it ([c974c14](https://github.com/espressif/esp-protocols/commit/c974c14))
+
+### Updated
+
+- docs: update documentation links ([4de5298](https://github.com/espressif/esp-protocols/commit/4de5298))
+
+## [1.1.0](https://github.com/espressif/esp-protocols/commits/mdns-v1.1.0)
+
+### Features
+
+- Decouple main module from mdns-networking ([d238e93](https://github.com/espressif/esp-protocols/commit/d238e93))
+
+### Bug Fixes
+
+- Use idf-build-apps package for building mdns ([1a0a41f](https://github.com/espressif/esp-protocols/commit/1a0a41f))
+- socket networking to init interfaces properly ([ee9b04f](https://github.com/espressif/esp-protocols/commit/ee9b04f))
+- Removed unused internal lock from mdns_server struct ([a06fb77](https://github.com/espressif/esp-protocols/commit/a06fb77))
+- Resolve conflicts only on self hosted items ([e69a9eb](https://github.com/espressif/esp-protocols/commit/e69a9eb), [#185](https://github.com/espressif/esp-protocols/issues/185))
+- Fix memory issues reported by valgrind ([0a682e7](https://github.com/espressif/esp-protocols/commit/0a682e7))
+
+### Updated
+
+- docs(common): updated component and example links ([f48d9b2](https://github.com/espressif/esp-protocols/commit/f48d9b2))
+- Add APIs to look up delegated services ([87dcd7d](https://github.com/espressif/esp-protocols/commit/87dcd7d))
+- Fix deadly mdns crash ([4fa3023](https://github.com/espressif/esp-protocols/commit/4fa3023))
+- docs(common): improving documentation ([ca3fce0](https://github.com/espressif/esp-protocols/commit/ca3fce0))
+- append all ipv6 address in mdns answer ([5ed3e9a](https://github.com/espressif/esp-protocols/commit/5ed3e9a))
+- test(mdns): Host tests to use IDF's esp_event_stub ([537d170](https://github.com/espressif/esp-protocols/commit/537d170))
+
 ## [1.0.9](https://github.com/espressif/esp-protocols/commits/mdns-v1.0.9)
 
 ### Features

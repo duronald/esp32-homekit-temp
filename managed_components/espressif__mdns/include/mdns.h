@@ -26,6 +26,10 @@ extern "C" {
  */
 typedef struct mdns_search_once_s mdns_search_once_t;
 
+/**
+ * @brief   Daemon query handle
+ */
+typedef struct mdns_browse_s mdns_browse_t;
 
 typedef enum {
     MDNS_EVENT_ENABLE_IP4                   = 1 << 1,
@@ -98,6 +102,7 @@ typedef struct mdns_result_s {
 } mdns_result_t;
 
 typedef void (*mdns_query_notify_t)(mdns_search_once_t *search);
+typedef void (*mdns_browse_notify_t)(mdns_result_t *result);
 
 /**
  * @brief  Initialize mDNS on given interface
@@ -130,6 +135,19 @@ void mdns_free(void);
 esp_err_t mdns_hostname_set(const char *hostname);
 
 /**
+ * @brief Get the hostname for mDNS server
+ *
+ * @param hostname      pointer to the hostname, it should be allocated
+ *                      and hold at least MDNS_NAME_BUF_LEN chars
+ *
+ * @return
+ *     - ESP_OK success
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *     - ESP_ERR_INVALID_STATE when mdns is not initialized
+ */
+esp_err_t mdns_hostname_get(char *hostname);
+
+/**
  * @brief  Adds a hostname and address to be delegated
  *         A/AAAA queries will be replied for the hostname and
  *         services can be added to this host.
@@ -145,6 +163,21 @@ esp_err_t mdns_hostname_set(const char *hostname);
  *
  */
 esp_err_t mdns_delegate_hostname_add(const char *hostname, const mdns_ip_addr_t *address_list);
+
+/**
+ * @brief  Set the address to a delegated hostname
+ *
+ * @param  hostname     Hostname to set
+ * @param  address_list The IP address list of the host
+ *
+ * @return
+ *     - ESP_OK success
+ *     - ESP_ERR_INVALID_STATE mDNS is not running
+ *     - ESP_ERR_INVALID_ARG Parameter error
+ *     - ESP_ERR_NO_MEM memory error
+ *
+ */
+esp_err_t mdns_delegate_hostname_set_address(const char *hostname, const mdns_ip_addr_t *address_list);
 
 /**
  * @brief  Remove a delegated hostname
@@ -247,7 +280,6 @@ esp_err_t mdns_service_add_for_host(const char *instance_name, const char *servi
  *     - false  Service not found.
  */
 bool mdns_service_exists(const char *service_type, const char *proto, const char *hostname);
-
 
 /**
  * @brief  Check whether a service has been added.
@@ -688,6 +720,42 @@ esp_err_t mdns_query_srv(const char *instance_name, const char *service_type, co
 esp_err_t mdns_query_txt(const char *instance_name, const char *service_type, const char *proto, uint32_t timeout, mdns_result_t **result);
 
 /**
+ * @brief Look up delegated services.
+ *
+ * @param  instance         instance name (NULL for uncertain instance)
+ * @param  service_type     service type (_http, _ftp, etc)
+ * @param  proto            service protocol (_tcp, _udp)
+ * @param  max_results      maximum results to be collected
+ * @param  result           pointer to the result of the search
+ *
+ * @return
+ *     - ESP_OK success
+ *     - ESP_ERR_INVALID_STATE  mDNS is not running
+ *     - ESP_ERR_NO_MEM         memory error
+ *     - ESP_ERR_INVALID_ARG    parameter error
+ */
+esp_err_t mdns_lookup_delegated_service(const char *instance, const char *service_type, const char *proto, size_t max_results,
+                                        mdns_result_t **result);
+
+/**
+ * @brief Look up self hosted services.
+ *
+ * @param  instance         instance name (NULL for uncertain instance)
+ * @param  service_type     service type (_http, _ftp, etc)
+ * @param  proto            service protocol (_tcp, _udp)
+ * @param  max_results      maximum results to be collected
+ * @param  result           pointer to the result of the search
+ *
+ * @return
+ *     - ESP_OK success
+ *     - ESP_ERR_INVALID_STATE  mDNS is not running
+ *     - ESP_ERR_NO_MEM         memory error
+ *     - ESP_ERR_INVALID_ARG    parameter error
+ */
+esp_err_t mdns_lookup_selfhosted_service(const char *instance, const char *service_type, const char *proto, size_t max_results,
+        mdns_result_t **result);
+
+/**
  * @brief  Query mDNS for A record
  *
  * @param  host_name    host name to look for
@@ -767,6 +835,28 @@ esp_err_t mdns_unregister_netif(esp_netif_t *esp_netif);
  *     - ESP_ERR_NO_MEM         memory error
  */
 esp_err_t mdns_netif_action(esp_netif_t *esp_netif, mdns_event_actions_t event_action);
+
+/**
+ * @brief   Browse mDNS for a service `_service._proto`.
+ *
+ * @param service  Pointer to the `_service` which will be browsed.
+ * @param proto    Pointer to the `_proto` which will be browsed.
+ * @param notifier The callback which will be called when the browsing service changed.
+ * @return mdns_browse_t pointer to new browse object if initiated successfully.
+ *         NULL otherwise.
+ */
+mdns_browse_t *mdns_browse_new(const char *service, const char *proto, mdns_browse_notify_t notifier);
+
+/**
+ * @brief   Stop the `_service._proto` browse.
+ * @param service  Pointer to the `_service` which will be browsed.
+ * @param proto    Pointer to the `_proto` which will be browsed.
+ * @return
+ *     - ESP_OK                 success.
+ *     - ESP_ERR_FAIL           mDNS is not running or the browsing of `_service._proto` is never started.
+ *     - ESP_ERR_NO_MEM         memory error.
+ */
+esp_err_t mdns_browse_delete(const char *service, const char *proto);
 
 #ifdef __cplusplus
 }

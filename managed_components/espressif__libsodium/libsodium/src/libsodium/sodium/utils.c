@@ -79,6 +79,7 @@ void *alloca (size_t);
     defined(HAVE_POSIX_MEMALIGN)
 # define HAVE_ALIGNED_MALLOC
 #endif
+
 #if defined(HAVE_MPROTECT) && \
     !(defined(PROT_NONE) && defined(PROT_READ) && defined(PROT_WRITE))
 # undef HAVE_MPROTECT
@@ -121,7 +122,7 @@ _sodium_dummy_symbol_to_prevent_memzero_lto(void *const  pnt,
 void
 sodium_memzero(void * const pnt, const size_t len)
 {
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(__CRT_INLINE)
     SecureZeroMemory(pnt, len);
 #elif defined(HAVE_MEMSET_S)
     if (len > 0U && memset_s(pnt, (rsize_t) len, 0, (rsize_t) len) != 0) {
@@ -129,6 +130,8 @@ sodium_memzero(void * const pnt, const size_t len)
     }
 #elif defined(HAVE_EXPLICIT_BZERO)
     explicit_bzero(pnt, len);
+#elif defined(HAVE_MEMSET_EXPLICIT)
+    memset_explicit(pnt, 0, len);
 #elif defined(HAVE_EXPLICIT_MEMSET)
     explicit_memset(pnt, 0, len);
 #elif HAVE_WEAK_SYMBOLS
@@ -242,8 +245,8 @@ sodium_compare(const unsigned char *b1_, const unsigned char *b2_, size_t len)
         i--;
         x1 = b1[i];
         x2 = b2[i];
-        gt |= ((x2 - x1) >> 8) & eq;
-        eq &= ((x2 ^ x1) - 1) >> 8;
+        gt |= (((unsigned int) x2 - (unsigned int) x1) >> 8) & eq;
+        eq &= (((unsigned int) (x2 ^ x1)) - 1) >> 8;
     }
     return (int) (gt + gt + eq) - 1;
 }
@@ -505,7 +508,9 @@ __attribute__((noreturn)) static void
 _out_of_bounds(void)
 {
 # if defined(HAVE_RAISE) && !defined(__wasm__)
-#  ifdef SIGSEGV
+#  ifdef SIGPROT
+    raise(SIGPROT);
+#  elif defined(SIGSEGV)
     raise(SIGSEGV);
 #  elif defined(SIGKILL)
     raise(SIGKILL);
@@ -614,7 +619,7 @@ _sodium_malloc(const size_t size)
     memcpy(unprotected_ptr + unprotected_size, canary, sizeof canary);
 # endif
     _mprotect_noaccess(unprotected_ptr + unprotected_size, page_size);
-    sodium_mlock(unprotected_ptr, unprotected_size);
+    (void) sodium_mlock(unprotected_ptr, unprotected_size); /* not a hard error in the context of sodium_malloc() */
     canary_ptr =
         unprotected_ptr + _page_round(size_with_canary) - size_with_canary;
     user_ptr = canary_ptr + sizeof canary;
@@ -684,7 +689,7 @@ sodium_free(void *ptr)
         _out_of_bounds();
     }
 # endif
-    sodium_munlock(unprotected_ptr, unprotected_size);
+    (void) sodium_munlock(unprotected_ptr, unprotected_size);
     _free_aligned(base_ptr, total_size);
 }
 #endif /* HAVE_ALIGNED_MALLOC */
